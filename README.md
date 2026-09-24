@@ -56,6 +56,30 @@ cd train_files
 python ResEmoteNet_train.py
 ```
 
+For the server-side FER2013 directory layout shown in the project setup:
+
+```text
+/mnt/data/yanyi2025/cyj/fer2013_img/
+    train/<class_name>/...
+    val/<class_name>/...
+    test/<class_name>/...
+```
+
+run the ImageFolder training script from the repository root:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python train_files/ResEmoteNet_folder_train.py \
+    --data-root /mnt/data/yanyi2025/cyj/fer2013_img \
+    --gpu 0 \
+    --output-dir checkpoints/fer2013_resemotenet
+```
+
+The script uses only physical GPU 0, evaluates validation data without random
+augmentation, and writes `best_model.pth`, `metrics.csv`, and
+`class_names.json` to the output directory. It expects exactly seven class
+folders in each split; `ImageFolder` assigns indices in sorted folder-name
+order.
+
 ## Checkpoints
 All of the checkpoint models for FER2013, RAF-DB and AffectNet-7 can be found [here](https://drive.google.com/drive/folders/1Daxa6d1-XFxxpg6dyxYl4V-anfiHwtqK?usp=sharing).
 
