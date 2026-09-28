@@ -29,7 +29,7 @@ def parse_args():
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("checkpoints/fer2013_resemotenet"),
+        default=Path("/mnt/data/yanyi2025/cyj/fer2013/resemotenet"),
         help="Directory for checkpoints and metrics.",
     )
     parser.add_argument(
@@ -38,10 +38,24 @@ def parse_args():
         help="Physical GPU id to use. Use 'cpu' to disable CUDA.",
     )
     parser.add_argument("--epochs", type=int, default=80)
-    parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--patience", type=int, default=15)
+    parser.add_argument(
+        "--scheduler-patience",
+        type=int,
+        default=5,
+        help=(
+            "Plateau epochs before reducing LR. The paper does not specify this "
+            "value; default 5 is an explicit implementation choice."
+        ),
+    )
+    parser.add_argument(
+        "--early-stopping-patience",
+        type=int,
+        default=0,
+        help="Disable early stopping with 0 (default); otherwise stop after this many non-improving epochs.",
+    )
     parser.add_argument("--seed", type=int, default=42)
     return parser.parse_args()
 
@@ -211,6 +225,12 @@ def main():
     optimizer = optim.SGD(
         model.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4
     )
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="max",
+        factor=0.1,
+        patience=args.scheduler_patience,
+    )
 
     print(f"Using device: {device}")
     if device.type == "cuda":
@@ -232,7 +252,8 @@ def main():
             model, train_loader, criterion, device, optimizer
         )
         val_loss, val_acc = run_epoch(model, val_loader, criterion, device)
-        test_loss, test_acc = run_epoch(model, test_loader, criterion, device)
+        scheduler.step(val_acc)
+        current_lr = optimizer.param_groups[0]["lr"]
 
         row = {
             "epoch": epoch,
@@ -240,15 +261,14 @@ def main():
             "train_accuracy": train_acc,
             "val_loss": val_loss,
             "val_accuracy": val_acc,
-            "test_loss": test_loss,
-            "test_accuracy": test_acc,
+            "learning_rate": current_lr,
         }
         history.append(row)
         print(
             f"Epoch {epoch:03d}/{args.epochs} | "
             f"train loss {train_loss:.4f}, acc {train_acc:.4f} | "
             f"val loss {val_loss:.4f}, acc {val_acc:.4f} | "
-            f"test loss {test_loss:.4f}, acc {test_acc:.4f}"
+            f"lr {current_lr:.2e}"
         )
 
         if val_acc > best_val_acc:
@@ -265,9 +285,33 @@ def main():
             print(f"  Saved best checkpoint (val acc={best_val_acc:.4f})")
         else:
             patience_counter += 1
-            if patience_counter >= args.patience:
+            if (
+                args.early_stopping_patience > 0
+                and patience_counter >= args.early_stopping_patience
+            ):
                 print("Early stopping: validation accuracy did not improve.")
                 break
+
+    checkpoint = torch.load(
+        output_dir / "best_model.pth", map_location=device, weights_only=True
+    )
+    model.load_state_dict(checkpoint["model_state_dict"])
+    test_loss, test_acc = run_epoch(model, test_loader, criterion, device)
+    test_metrics = {
+        "checkpoint_epoch": checkpoint["epoch"],
+        "best_val_accuracy": checkpoint["best_val_acc"],
+        "test_loss": test_loss,
+        "test_accuracy": test_acc,
+        "class_names": class_names,
+    }
+    (output_dir / "test_metrics.json").write_text(
+        json.dumps(test_metrics, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    print(
+        f"Best checkpoint epoch {checkpoint['epoch']} | "
+        f"val acc {checkpoint['best_val_acc']:.4f} | "
+        f"final test loss {test_loss:.4f}, acc {test_acc:.4f}"
+    )
 
     pd.DataFrame(history).to_csv(output_dir / "metrics.csv", index=False)
     (output_dir / "class_names.json").write_text(
