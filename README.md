@@ -111,6 +111,27 @@ the plateau scheduler's patience; the script defaults to 5 epochs. It expects
 exactly seven class folders in each split; `ImageFolder` assigns indices in
 sorted folder-name order.
 
+For the RAF-DB layout with `train` and `val` directories:
+
+```bash
+mkdir -p /mnt/data/yanyi2025/cyj/raf-db/resemotenet
+
+nohup env CUDA_VISIBLE_DEVICES=0 python train_files/ResEmoteNet_rafdb_train.py \
+    --data-root /mnt/data/yanyi2025/cyj/raf-db \
+    --gpu 0 \
+    --epochs 80 \
+    --batch-size 16 \
+    --lr 0.001 \
+    --scheduler-patience 5 \
+    --output-dir /mnt/data/yanyi2025/cyj/raf-db/resemotenet \
+    > /mnt/data/yanyi2025/cyj/raf-db/resemotenet/train.log 2>&1 </dev/null &
+```
+
+The RAF-DB script expects exactly seven class folders in both splits and
+selects `best_model.pth` using validation accuracy. Since the shown directory
+has no separate test split, it writes `val_metrics.json` rather than reporting
+a test accuracy.
+
 ## Checkpoints
 All of the checkpoint models for FER2013, RAF-DB and AffectNet-7 can be found [here](https://drive.google.com/drive/folders/1Daxa6d1-XFxxpg6dyxYl4V-anfiHwtqK?usp=sharing).
 
